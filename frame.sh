@@ -1,5 +1,5 @@
 #!/bin/bash
-cd ~/Documents/framework || exit
+cd "$(dirname "$BASH_SOURCE")" || exit
 
 mkdir -p bin
 
