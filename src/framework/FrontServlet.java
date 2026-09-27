@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.util.Map;
+import mg.itu.annotation.RestApi;
 
 public class FrontServlet extends HttpServlet {
     
@@ -62,7 +63,8 @@ public class FrontServlet extends HttpServlet {
                 out.println("<hr>");
                 
                 out.println("<h2>Console de test :</h2>");
-                out.println("<p><a href='" + contextPath + "/liste-utilisateurs'>Tester</a></p>");
+                out.println("<p><a href='" + contextPath + "/liste-utilisateurs'>Tester Vue HTML/JSP (Sprint 5)</a></p>");
+                out.println("<p><a href='" + contextPath + "/api/utilisateurs'>Tester API JSON (Sprint 6)</a></p>");
                 
                 out.println("</body>");
                 out.println("</html>");
@@ -82,21 +84,42 @@ public class FrontServlet extends HttpServlet {
                 
                 Object result = targetMethod.invoke(controllerInstance);
                 
-                if (result instanceof ModelAndView) {
-                    ModelAndView mv = (ModelAndView) result;
+                boolean isRestApi = targetMethod.isAnnotationPresent(RestApi.class);
+
+                if (isRestApi) {
+                    response.setContentType("application/json;charset=UTF-8");
                     
-                    for (Map.Entry<String, Object> entry : mv.getModel().entrySet()) {
-                        request.setAttribute(entry.getKey(), entry.getValue());
-                    }
-                    
-                    String fullViewPath = this.viewPrefix + mv.getView() + this.viewSuffix;
-                    
-                    request.getRequestDispatcher(fullViewPath).forward(request, response);
-                } 
-                else if (result != null) {
-                    response.setContentType("text/html;charset=UTF-8");
                     try (PrintWriter out = response.getWriter()) {
-                        out.println("<p>Le contrôleur a renvoyé une chaîne brute : <strong>" + result.toString() + "</strong></p>");
+                        if (result == null) {
+                            out.print("null");
+                        } 
+                        else if (result instanceof String) {
+                            out.print(result.toString());
+                        } 
+                        else {
+                            com.google.gson.Gson gson = new com.google.gson.Gson();
+                            String jsonOutput = gson.toJson(result);
+                            out.print(jsonOutput);
+                        }
+                    }
+                } 
+                else {
+                    if (result instanceof ModelAndView) {
+                        ModelAndView mv = (ModelAndView) result;
+                        
+                        for (Map.Entry<String, Object> entry : mv.getModel().entrySet()) {
+                            request.setAttribute(entry.getKey(), entry.getValue());
+                        }
+                        
+                        String fullViewPath = this.viewPrefix + mv.getView() + this.viewSuffix;
+                        
+                        request.getRequestDispatcher(fullViewPath).forward(request, response);
+                    } 
+                    else if (result != null) {
+                        response.setContentType("text/html;charset=UTF-8");
+                        try (PrintWriter out = response.getWriter()) {
+                            out.println("<p>Le contrôleur a renvoyé une chaîne brute : <strong>" + result.toString() + "</strong></p>");
+                        }
                     }
                 }
                 
