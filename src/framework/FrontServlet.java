@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.Map;
 import mg.itu.annotation.RestApi;
 
@@ -35,40 +36,10 @@ public class FrontServlet extends HttpServlet {
         
         String requestURI = request.getRequestURI();
         String contextPath = request.getContextPath();
-        
         String pathInfo = requestURI.substring(contextPath.length());
         
         if (pathInfo == null || pathInfo.isEmpty() || pathInfo.equals("/") || pathInfo.equals("/index.html")) {
-            response.setContentType("text/html;charset=UTF-8");
-            try (PrintWriter out = response.getWriter()) {
-                out.println("<!DOCTYPE html>");
-                out.println("<html>");
-                out.println("<head><title>Framework - Table de Routage</title></head>");
-                out.println("<body style='font-family: sans-serif; margin: 40px;'>");
-                out.println("<h1>Url capturée : " + requestURI + "</h1>");
-                out.println("<p>Context Path : " + contextPath + "</p>");
-                out.println("<hr>");
-                
-                out.println("<h2>URLs de routage détectées dans l'application :</h2>");
-                out.println("<ul>");
-                if (urlMappingTable != null) {
-                    for (Map.Entry<MappingKey, MappingValue> entry : urlMappingTable.entrySet()) {
-                        MappingKey key = entry.getKey();
-                        MappingValue value = entry.getValue();
-                        out.println("<li>URL : <strong>" + key.getUrl() + "</strong> [" + key.getMethodType() + "] associée à -> " 
-                                + value.getControllerClass().getName() + "." + value.getMethod().getName() + "()</li>");
-                    }
-                }
-                out.println("</ul>");
-                out.println("<hr>");
-                
-                out.println("<h2>Console de test :</h2>");
-                out.println("<p><a href='" + contextPath + "/liste-utilisateurs'>Tester Vue HTML/JSP (Sprint 5)</a></p>");
-                out.println("<p><a href='" + contextPath + "/api/utilisateurs'>Tester API JSON (Sprint 6)</a></p>");
-                
-                out.println("</body>");
-                out.println("</html>");
-            }
+            getServletContext().getNamedDispatcher("default").forward(request, response);
             return;
         }
 
@@ -82,7 +53,14 @@ public class FrontServlet extends HttpServlet {
                 Object controllerInstance = clazz.getDeclaredConstructor().newInstance();
                 Method targetMethod = mappingTarget.getMethod();
                 
-                Object result = targetMethod.invoke(controllerInstance);
+                Parameter[] parameters = targetMethod.getParameters();
+                Object[] methodArgs = new Object[parameters.length];
+
+                for (int i = 0; i < parameters.length; i++) {
+                    methodArgs[i] = ParameterUtils.bindParameter(parameters[i], request);
+                }
+
+                Object result = targetMethod.invoke(controllerInstance, methodArgs);
                 
                 boolean isRestApi = targetMethod.isAnnotationPresent(RestApi.class);
 
@@ -98,8 +76,7 @@ public class FrontServlet extends HttpServlet {
                         } 
                         else {
                             com.google.gson.Gson gson = new com.google.gson.Gson();
-                            String jsonOutput = gson.toJson(result);
-                            out.print(jsonOutput);
+                            out.print(gson.toJson(result));
                         }
                     }
                 } 
@@ -112,19 +89,18 @@ public class FrontServlet extends HttpServlet {
                         }
                         
                         String fullViewPath = this.viewPrefix + mv.getView() + this.viewSuffix;
-                        
                         request.getRequestDispatcher(fullViewPath).forward(request, response);
                     } 
                     else if (result != null) {
                         response.setContentType("text/html;charset=UTF-8");
                         try (PrintWriter out = response.getWriter()) {
-                            out.println("<p>Le contrôleur a renvoyé une chaîne brute : <strong>" + result.toString() + "</strong></p>");
+                            out.println("<p>Résultat : <strong>" + result.toString() + "</strong></p>");
                         }
                     }
                 }
                 
             } catch (Exception e) {
-                throw new ServletException("Erreur lors de l'exécution de la méthode du contrôleur", e);
+                throw new ServletException("Erreur lors de l'exécution du contrôleur", e);
             }
         } else {
             response.setContentType("text/html;charset=UTF-8");
