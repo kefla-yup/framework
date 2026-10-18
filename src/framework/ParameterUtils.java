@@ -1,6 +1,8 @@
 package framework;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Part;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
@@ -13,6 +15,14 @@ public class ParameterUtils {
         Class<?> targetType = parameter.getType();
         String paramName = parameter.getName(); 
 
+        if (HttpServletRequest.class.isAssignableFrom(targetType)) {
+            return request;
+        }
+
+        if (targetType == MapFile.class) {
+            return extractMapFile(paramName, request);
+        }
+
         if (!isPrimitiveOrWrapperOrString(targetType) && !targetType.isArray() && !List.class.isAssignableFrom(targetType)) {
             return bindInternal(targetType, "", parameter.getParameterizedType(), request);
         }
@@ -22,6 +32,14 @@ public class ParameterUtils {
 
     private static Object bindInternal(Class<?> targetType, String currentPrefix, java.lang.reflect.Type genericType, HttpServletRequest request) throws Exception {
         
+        if (HttpServletRequest.class.isAssignableFrom(targetType)) {
+            return request;
+        }
+
+        if (targetType == MapFile.class) {
+            return extractMapFile(currentPrefix, request);
+        }
+
         if (targetType.isArray()) {
             String[] values = request.getParameterValues(currentPrefix);
             if (values == null) return null;
@@ -67,8 +85,17 @@ public class ParameterUtils {
             
             String subPrefix = (currentPrefix != null && !currentPrefix.isEmpty()) ? currentPrefix + "." + fieldName : fieldName;
 
-            if (isPrimitiveOrWrapperOrString(field.getType())) {
+            if (field.getType() == MapFile.class) {
+                MapFile file = extractMapFile(subPrefix, request);
+                if (file == null) {
+                    file = extractMapFile(fieldName, request);
+                }
+                field.set(complexObj, file);
+            } else if (isPrimitiveOrWrapperOrString(field.getType())) {
                 String httpVal = request.getParameter(subPrefix);
+                if (httpVal == null) {
+                    httpVal = request.getParameter(fieldName);
+                }
                 if (httpVal != null) {
                     Object converted = convertValue(httpVal, field.getType());
                     field.set(complexObj, converted);
@@ -80,6 +107,34 @@ public class ParameterUtils {
         }
 
         return complexObj;
+    }
+
+    public static MapFile extractMapFile(String partName, HttpServletRequest request) {
+        try {
+            Part part = request.getPart(partName);
+            if (part == null || part.getSubmittedFileName() == null || part.getSubmittedFileName().trim().isEmpty()) {
+                return null;
+            }
+
+            String fullFileName = part.getSubmittedFileName();
+            String fileName = fullFileName;
+            String extension = "";
+
+            int dotIndex = fullFileName.lastIndexOf('.');
+            if (dotIndex != -1) {
+                fileName = fullFileName.substring(0, dotIndex);
+                extension = fullFileName.substring(dotIndex + 1);
+            }
+
+            byte[] bytes;
+            try (InputStream is = part.getInputStream()) {
+                bytes = is.readAllBytes();
+            }
+
+            return new MapFile(fileName, extension, bytes);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static Object convertValue(String value, Class<?> targetType) {
