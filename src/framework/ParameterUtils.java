@@ -1,6 +1,7 @@
 package framework;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -14,6 +15,14 @@ public class ParameterUtils {
     public static Object bindParameter(Parameter parameter, HttpServletRequest request) throws Exception {
         Class<?> targetType = parameter.getType();
         String paramName = parameter.getName(); 
+
+        if (targetType == MySession.class) {
+            return new MySession(request.getSession());
+        }
+
+        if (HttpSession.class.isAssignableFrom(targetType)) {
+            return request.getSession();
+        }
 
         if (HttpServletRequest.class.isAssignableFrom(targetType)) {
             return request;
@@ -32,6 +41,14 @@ public class ParameterUtils {
 
     private static Object bindInternal(Class<?> targetType, String currentPrefix, java.lang.reflect.Type genericType, HttpServletRequest request) throws Exception {
         
+        if (targetType == MySession.class) {
+            return new MySession(request.getSession());
+        }
+
+        if (HttpSession.class.isAssignableFrom(targetType)) {
+            return request.getSession();
+        }
+
         if (HttpServletRequest.class.isAssignableFrom(targetType)) {
             return request;
         }
