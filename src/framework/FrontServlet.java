@@ -4,12 +4,14 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.Map;
 import mg.itu.annotation.RestApi;
+import mg.itu.annotation.Auth;
 
 public class FrontServlet extends HttpServlet {
     
@@ -53,6 +55,39 @@ public class FrontServlet extends HttpServlet {
                 Object controllerInstance = clazz.getDeclaredConstructor().newInstance();
                 Method targetMethod = mappingTarget.getMethod();
                 
+                if (targetMethod.isAnnotationPresent(Auth.class)) {
+                    Auth authAnnotation = targetMethod.getAnnotation(Auth.class);
+                    HttpSession session = request.getSession(false);
+                    
+                    boolean isLoggedIn = (session != null && session.getAttribute("utilisateur") != null);
+                    
+                    if (!isLoggedIn) {
+                        response.setContentType("text/html;charset=UTF-8");
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        try (PrintWriter out = response.getWriter()) {
+                            out.println("<h1 style='color:red;'>Accès non autorisé (401)</h1>");
+                            out.println("<p>Vous devez être connecté pour accéder à cette ressource.</p>");
+                            out.println("<br><a href='" + contextPath + "/'>Retour à l'accueil</a>");
+                        }
+                        return;
+                    }
+
+                    String requiredRole = authAnnotation.role();
+                    if (requiredRole != null && !requiredRole.trim().isEmpty()) {
+                        String userRole = (String) session.getAttribute("role");
+                        if (userRole == null || !userRole.equals(requiredRole)) {
+                            response.setContentType("text/html;charset=UTF-8");
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            try (PrintWriter out = response.getWriter()) {
+                                out.println("<h1 style='color:red;'>Accès refusé (403)</h1>");
+                                out.println("<p>Droits insuffisants. Rôle requis : <strong>" + requiredRole + "</strong></p>");
+                                out.println("<br><a href='" + contextPath + "/'>Retour à l'accueil</a>");
+                            }
+                            return;
+                        }
+                    }
+                }
+
                 Parameter[] parameters = targetMethod.getParameters();
                 Object[] methodArgs = new Object[parameters.length];
 
@@ -66,15 +101,12 @@ public class FrontServlet extends HttpServlet {
 
                 if (isRestApi) {
                     response.setContentType("application/json;charset=UTF-8");
-                    
                     try (PrintWriter out = response.getWriter()) {
                         if (result == null) {
                             out.print("null");
-                        } 
-                        else if (result instanceof String) {
+                        } else if (result instanceof String) {
                             out.print(result.toString());
-                        } 
-                        else {
+                        } else {
                             com.google.gson.Gson gson = new com.google.gson.Gson();
                             out.print(gson.toJson(result));
                         }
@@ -83,11 +115,9 @@ public class FrontServlet extends HttpServlet {
                 else {
                     if (result instanceof ModelAndView) {
                         ModelAndView mv = (ModelAndView) result;
-                        
                         for (Map.Entry<String, Object> entry : mv.getModel().entrySet()) {
                             request.setAttribute(entry.getKey(), entry.getValue());
                         }
-                        
                         String fullViewPath = this.viewPrefix + mv.getView() + this.viewSuffix;
                         request.getRequestDispatcher(fullViewPath).forward(request, response);
                     } 
@@ -107,7 +137,7 @@ public class FrontServlet extends HttpServlet {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             try (PrintWriter out = response.getWriter()) {
                 out.println("<h1 style='color:red;'>Erreur 404 : Non trouvé</h1>");
-                out.println("<p>Aucune méthode associée à l'URL <strong>" + pathInfo + "</strong> avec le verbe <strong>" + httpMethod + "</strong></p>");
+                out.println("<p>URL introuvable : <strong>" + pathInfo + "</strong></p>");
                 out.println("<br><a href='" + contextPath + "/'>Retour à l'accueil</a>");
             }
         }
