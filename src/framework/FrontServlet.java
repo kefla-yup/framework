@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.HashMap;
 import java.util.Map;
 import mg.itu.annotation.RestApi;
 import mg.itu.annotation.Auth;
@@ -18,6 +19,8 @@ public class FrontServlet extends HttpServlet {
     private Map<MappingKey, MappingValue> urlMappingTable;
     private String viewPrefix;
     private String viewSuffix;
+    
+    private final Map<Class<?>, Object> singletonControllers = new HashMap<>();
 
     @Override
     public void init() throws ServletException {
@@ -31,6 +34,15 @@ public class FrontServlet extends HttpServlet {
 
         if (this.viewPrefix == null) this.viewPrefix = "";
         if (this.viewSuffix == null) this.viewSuffix = "";
+    }
+
+    private synchronized Object getControllerInstance(Class<?> clazz) throws Exception {
+        if (!singletonControllers.containsKey(clazz)) {
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            singletonControllers.put(clazz, instance);
+            System.out.println("Création de l'instance unique pour le contrôleur : " + clazz.getName());
+        }
+        return singletonControllers.get(clazz);
     }
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response) 
@@ -52,7 +64,9 @@ public class FrontServlet extends HttpServlet {
         if (mappingTarget != null) {
             try {
                 Class<?> clazz = mappingTarget.getControllerClass();
-                Object controllerInstance = clazz.getDeclaredConstructor().newInstance();
+                
+                Object controllerInstance = getControllerInstance(clazz);
+                
                 Method targetMethod = mappingTarget.getMethod();
                 
                 if (targetMethod.isAnnotationPresent(Auth.class)) {
